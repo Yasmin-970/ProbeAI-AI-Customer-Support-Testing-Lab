@@ -53,9 +53,9 @@ The model endpoint is `127.0.0.1:11434`. A hosted app cannot access a visitor's 
 
 ## How the AI path works
 
-`app/api/chat/route.ts` loads the current store policy and catalog. `lib/probe-ai.ts` formats these sources and the conversation for the assistant, and asks for a structured answer with source IDs. `lib/llm.ts` sends the request to Ollama. Test runs call the assistant for every customer turn, apply explicit checks first, and use a separate evaluator prompt for linguistic judgments. A judgment without a valid source citation and exact assistant quote becomes `needs_review`. Runs, transcripts, and evidence are stored in D1.
+`app/api/chat/route.ts` loads the current store policy and catalog. `lib/retrieval.ts` chunks them into numbered policy rules and product records, then uses a local BM25-style lexical ranking to retrieve the three most relevant records for the customer conversation. `lib/probe-ai.ts` sends only those records and the conversation to the assistant and asks for a structured answer with source IDs. The server accepts citations only to retrieved records. `lib/llm.ts` sends the request to Ollama. Test runs call the assistant for every customer turn, apply explicit checks first, and use a separate evaluator prompt with its own retrieval step for linguistic judgments. A judgment without a valid source citation and exact assistant quote becomes `needs_review`. Runs, transcripts, and evidence are stored in D1.
 
-The assistant and evaluator are separate calls and roles, but can use the same local Qwen3 model. This implementation supplies the small policy and catalog directly in context; it does not use embeddings, a vector database, or fine-tuning.
+The assistant and evaluator are separate calls and roles, but can use the same local Qwen3 model. This is retrieval-augmented generation (RAG) with lexical retrieval; it does not use embeddings, a vector database, or fine-tuning. The source index is rebuilt from the current store data on each request, so a policy edit is reflected immediately.
 
 ## Code map
 
@@ -67,6 +67,7 @@ The assistant and evaluator are separate calls and roles, but can use the same l
 | `lib/assistant.ts` | Rule-based Baseline and Revised assistants |
 | `lib/probe.ts` | Curated cases and explicit evaluation rules |
 | `lib/probe-ai.ts` | AI assistant and evidence-checked evaluator |
+| `lib/retrieval.ts` | Policy/product chunking and ranked RAG retrieval |
 | `lib/llm.ts` | Ollama/OpenAI provider adapter |
 | `db/schema.ts` | Persistent data model |
 
@@ -82,4 +83,4 @@ Colab is optional; the main product demo and local Qwen3 mode run in this web ap
 
 ## Current limits
 
-The built-in 20-case comparison demonstrates the workflow rather than production quality. The local AI quick run covers three cases. The AI evaluator has not been calibrated against a human-reviewed dataset. A production deployment would need broader tests, privacy controls, and a secure, server-accessible model provider.
+The built-in 20-case comparison demonstrates the workflow rather than production quality. The local AI quick run covers three cases. Lexical retrieval may miss paraphrases or multilingual matches; a larger deployment would benefit from hybrid/vector search and a human-reviewed retrieval test set. The AI evaluator has not been calibrated against a human-reviewed dataset. A production deployment would also need broader tests, privacy controls, and a secure, server-accessible model provider.
